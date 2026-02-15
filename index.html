@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <script src="./src/script.js" type="module"></script>
+    <script src="https://aframe.io/releases/1.7.1/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  </head>
+  <style>
+    #scene {
+      /* width: 100%;
+        height: 100%; */
+    }
+    .media {
+      position: fixed;
+      z-index: 2;
+      top: 0;
+      right: 0;
+
+      transform: scaleX(-1);
+      /* visibility: visible !important; */
+    }
+    video {
+      width: 20%;
+      height: 20%;
+    }
+    #overlay {
+      position: fixed;
+      z-index: 9999;
+    }
+  </style>
+  <body>
+    <div id="overlay">
+      <button id="bluetooth">Connect</button>
+      <button id="toggleBSConnection">connect to bs device</button>
+      Servo 1
+      <input id="servo1" type="range" value="0" min="0" max="180" />
+      Servo 2
+      <input id="servo2" type="range" value="0" min="0" max="180" />
+      Servo 3
+      <input id="servo3" type="range" value="0" min="0" max="180" />
+      Servo 4
+      <input id="servo4" type="range" value="0" min="0" max="180" />
+    </div>
+
+    <video id="video" class="media" autoplay playsinline></video>
+    <img class="media" id="cameraImage" />
+
+    <a-scene>
+      <a-sky color="green"></a-sky>
+      <a-camera id="camera" position="0 10 20" rotation="45 45 0"></a-camera>
+      <a-box
+        id="base"
+        position="0 0 0"
+        rotation="0 0 0"
+        color="white"
+        scale="7.62 1 7.62"
+      >
+      </a-box>
+
+      <a-entity id="baseServoEntity">
+        <a-box
+          id="baseServo"
+          scale="1.27 1.27 2.22"
+          position="0 1.152 0"
+          rotation="0 0 0"
+          color="blue"
+        ></a-box>
+
+        <a-entity rotary id="whiteArm1Entity" position="0 2.482 0">
+          <a-box
+            id="whiteArm1"
+            color="white"
+            scale="5.08 6.35 2.54"
+            position="0 2.482 0"
+            rotation="0 0 0"
+          ></a-box>
+
+          <a-entity id="servo2Entity" scale="1 1 1" position="0 6.260 0">
+            <a-box
+              id="servo2"
+              scale="1.27 1.27 2.22"
+              position="0 0 0"
+              rotation="0 0 0"
+              color="blue"
+            ></a-box>
+
+            <a-entity rotary id="whiteArm2Entity" position="0 1.324 0">
+              <a-box
+                id="whiteArm2"
+                color="white"
+                scale="5.08 6.35 2.54"
+                position="0 2.482 0"
+              ></a-box>
+
+              <a-entity rotary id="whiteArm3Entity" position="0 6.422 0">
+                <a-box
+                  id="whiteArm3"
+                  color="white"
+                  scale="5.08 6.35 2.54"
+                  position="0 2.482 0"
+                ></a-box>
+
+                <a-entity
+                  rotary
+                  id="servo4Entity"
+                  scale="1 1 1"
+                  position="0 6.260 0"
+                >
+                  <a-box
+                    id="servo2"
+                    scale="1.27 1.27 2.22"
+                    position="0 0 0"
+                    rotation="0 0 0"
+                    color="blue"
+                  ></a-box>
+
+                  <a-entity
+                    id="happyFaceEntity"
+                    scale="1 1 1"
+                    position="0 0.782 1.364"
+                  >
+                    <a-box
+                      id="happyFace"
+                      scale="3.530 1.9 0.5"
+                      position="0 0 0"
+                      rotation="0 0 0"
+                      color="yellow"
+                    ></a-box>
+
+                    <a-sphere
+                      color="black"
+                      radius="0.3"
+                      position="-1.162 0.278 0"
+                    ></a-sphere>
+                    <a-sphere
+                      color="black"
+                      radius="0.3"
+                      position="1.215 0.278 0"
+                    ></a-sphere>
+
+                    <a-sphere
+                      color="pink"
+                      radius="0.3"
+                      position="-0.057 -0.094 0"
+                    ></a-sphere>
+                  </a-entity>
+                </a-entity>
+              </a-entity>
+            </a-entity>
+          </a-entity>
+        </a-entity>
+      </a-entity>
+
+      <a-box hand position="0 10 10" color="red"></a-box>
+    </a-scene>
+  </body>
+</html>
