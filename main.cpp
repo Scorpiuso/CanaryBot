@@ -2,6 +2,7 @@
 #include <ArduinoBLE.h>
 #include <Servo.h>
 #include <stdint.h>
+#include <string.h>
 
 const char *BLESERVUUID = "36124082-beb0-468d-878d-4e92e1d57754";
 const char *BLECHARUUID = "2b1d2fc0-d457-4d7d-bcdc-5dc309b86e1d";
@@ -32,12 +33,215 @@ void setupServosToPins(Servo **servolist, const uint8_t *pins, uint8_t length);
 
 struct Pose
 {
-  int angles[SERVO_LIST_LENGTH]; // target angles for servos
-  float duration;                // Degrees per second
+  int angles[SERVO_LIST_LENGTH];
+  float duration;
+  bool isBreak = false;
+  String interpolationType;
+  int index = 0;
 };
+
+struct POSE_LIST
+{                                     // NEEDS SERVO LIST LENGTH!!!
+  int startAngles[SERVO_LIST_LENGTH]; // Establish Initial Angles
+  Pose *allPoses;                     // Pose array with poses and durations to be passed here
+  int poseArrayLength;                // Establish how many poses will be in animation
+
+  unsigned long startTime;   // Start (initial time) of run for each individual pose animation
+  unsigned long currentTime; // Current time (relative to initial time) of run for each individual pose animation
+
+  Servo **servoList; // List of Servos to manipulate
+  int servoListLength;
+
+  bool active; // Is active or animating
+
+  int currentPoseIndex; // Which pose are we at
+
+  String interpolationType = allPoses[currentPoseIndex].interpolationType;
+
+  int isMoving = false;
+
+  bool requestingAnimationChange = false;
+
+  Pose *replacementPoses[4];
+  int sizeOfReplacementArray; // LIST OF ACTUAL POSES TO CHANGE!
+
+  bool temporaryIndexChanged = false;
+
+  void nextPoseUp()
+  {
+    if (!temporaryIndexChanged)
+    {
+      memcpy(&startAngles, allPoses[currentPoseIndex].angles, sizeof(startAngles));
+      currentPoseIndex = (currentPoseIndex + 1) % poseArrayLength;
+      startTime = millis();
+      Serial.println("WORKING");
+      temporaryIndexChanged = true;
+    }
+  }
+
+  void nextPoseCustom(int index)
+  {
+    if (!temporaryIndexChanged)
+    {
+      memcpy(&startAngles, allPoses[currentPoseIndex].angles, sizeof(startAngles));
+      currentPoseIndex = index % poseArrayLength;
+      startTime = millis();
+    }
+  }
+
+  void replaceAnimationFrame(Pose *poseArray, int index)
+  {
+    requestingAnimationChange = true;
+
+    if (!isMoving)
+    {
+      memcpy(&allPoses[index], poseArray, sizeof(allPoses[index]));
+      requestingAnimationChange = false;
+    }
+    else
+    {
+      sizeOfReplacementArray = sizeof(replacementPoses) / sizeof(replacementPoses[0]);
+      replacementPoses[sizeOfReplacementArray] = poseArray;
+    }
+  }
+};
+
+Pose myPoses[] = {
+    {{100, 100, 100, 100}, 1000, true},
+    {{0, 0, 0, 0}, 2000, false, "linear"},
+    {{100, 120, 5, 90}, 5000, false, "highquad"}};
+
+// TO BE LOOPED
+
+void updateSequenceServos(POSE_LIST &pose_list)
+{
+  if (!pose_list.active)
+    return;
+
+  pose_list.temporaryIndexChanged = false;
+
+  // unsigned long now = millis();
+  pose_list.currentTime = millis();
+
+  int num_of_servos = pose_list.servoListLength;
+
+  unsigned long startTime = pose_list.startTime;
+  unsigned long currentTime = pose_list.currentTime;
+
+  float timeInterpolation = ((float)currentTime - (float)startTime) / static_cast<float>(pose_list.allPoses[pose_list.currentPoseIndex].duration);
+
+  if (!pose_list.allPoses[pose_list.currentPoseIndex].interpolationType)
+  {
+    if (pose_list.interpolationType == "linear")
+    {
+      timeInterpolation = timeInterpolation;
+    }
+    else if (pose_list.interpolationType == "quadratic")
+    {
+      timeInterpolation = pow(timeInterpolation, 2);
+    }
+    else if (pose_list.interpolationType == "lowquad")
+    {
+      timeInterpolation = pow(timeInterpolation, 4);
+    }
+    else if (pose_list.interpolationType == "midquad")
+    {
+      timeInterpolation = pow(timeInterpolation, 7);
+    }
+    else if (pose_list.interpolationType == "highquad")
+    {
+      timeInterpolation = pow(timeInterpolation, 10);
+    }
+  }
+  else
+  {
+    if (pose_list.allPoses[pose_list.currentPoseIndex].interpolationType == "linear")
+    {
+      timeInterpolation = timeInterpolation;
+    }
+    else if (pose_list.allPoses[pose_list.currentPoseIndex].interpolationType == "quadratic")
+    {
+      timeInterpolation = pow(timeInterpolation, 2);
+    }
+    else if (pose_list.allPoses[pose_list.currentPoseIndex].interpolationType == "lowquad")
+    {
+      timeInterpolation = pow(timeInterpolation, 4);
+    }
+    else if (pose_list.allPoses[pose_list.currentPoseIndex].interpolationType == "midquad")
+    {
+      timeInterpolation = pow(timeInterpolation, 7);
+    }
+    else if (pose_list.allPoses[pose_list.currentPoseIndex].interpolationType == "highquad")
+    {
+      timeInterpolation = pow(timeInterpolation, 10);
+    }
+  }
+
+  if (!pose_list.allPoses[pose_list.currentPoseIndex].isBreak)
+  {
+    pose_list.isMoving = true;
+    for (int i = 0; i < num_of_servos; i++)
+    {
+      Servo *servo = pose_list.servoList[i];
+      int currentServoPosition = servo->read();
+      int targetServoPosition = pose_list.allPoses[pose_list.currentPoseIndex].angles[i];
+
+      int startAngle = pose_list.startAngles[i];
+
+      float interpolationAngle = static_cast<float>(((targetServoPosition - currentServoPosition) * (timeInterpolation)) + startAngle);
+
+      if (timeInterpolation < 1)
+      {
+        servo->write(static_cast<int>(interpolationAngle));
+      }
+      else
+      {
+
+        pose_list.nextPoseUp();
+
+        pose_list.isMoving = false;
+
+        if (pose_list.requestingAnimationChange)
+        {
+          for (int i = 0; i < pose_list.sizeOfReplacementArray; i++)
+          {
+            memcpy(&pose_list.allPoses[pose_list.replacementPoses[i]->index], pose_list.replacementPoses[i], sizeof(pose_list.allPoses[pose_list.replacementPoses[i]->index]));
+          }
+
+          pose_list.requestingAnimationChange = false;
+          pose_list.sizeOfReplacementArray = 0;
+          *pose_list.replacementPoses = nullptr;
+        }
+      }
+    }
+  }
+  else
+  {
+
+    if (timeInterpolation >= 1)
+    {
+
+      pose_list.nextPoseUp();
+      pose_list.isMoving = false;
+
+      if (pose_list.requestingAnimationChange)
+      {
+        for (int i = 0; i < pose_list.sizeOfReplacementArray; i++)
+        {
+          memcpy(&pose_list.allPoses[pose_list.replacementPoses[i]->index], pose_list.replacementPoses[i], sizeof(pose_list.allPoses[pose_list.replacementPoses[i]->index]));
+        }
+
+        pose_list.requestingAnimationChange = false;
+        pose_list.sizeOfReplacementArray = 0;
+        *pose_list.replacementPoses = nullptr;
+      }
+    }
+  }
+}
 
 void updateSequence(Servo **servoList, int *start_angles, int *current_angles_POS, Pose current_angles, int servo_length, int poses_total);
 void moveToPose(int pose_index);
+POSE_LIST my_animation = {{90, 90, 90, 90}, myPoses, 3, 0, 0, servos, SERVO_LIST_LENGTH, true, 0, "quadratic"};
 
 void setup()
 {
@@ -53,7 +257,7 @@ void setup()
   // Send initial values to central
   bleCharacteristic.writeValue(vals, valsLength);
 
-  moveToPose(0);
+  // moveToPose(0);
 }
 
 Pose sequence[] = {
@@ -85,10 +289,12 @@ int startAngles[SERVO_LIST_LENGTH] = {0};
 void loop()
 {
 
-  lastUpdate = millis();
+  // lastUpdate = millis();
+
+  updateSequenceServos(my_animation);
 
   // updateSequence();
-  updateSequence(servos, startAngles, currentAngles, *sequence2, SERVO_LIST_LENGTH, totalPoses);
+  // updateSequence(servos, startAngles, currentAngles, *sequence2, SERVO_LIST_LENGTH, totalPoses);
 
   BLE.poll();
 
