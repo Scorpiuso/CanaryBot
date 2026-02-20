@@ -7,6 +7,11 @@
 const char *BLESERVUUID = "36124082-beb0-468d-878d-4e92e1d57754";
 const char *BLECHARUUID = "2b1d2fc0-d457-4d7d-bcdc-5dc309b86e1d";
 
+const char *BLEPOSECHARUUID = "8bd3c001-a985-428e-9033-ef4ba970cc52";
+
+const char *txUUID = "424c7441-deb7-41a6-ab07-91838c0ee835";
+const uint8_t ack = 1;
+
 const char *DEVICENAME = "Jimmy's Pet";
 
 const uint8_t SERVO_LIST[] = {2, 3, 6, 7};
@@ -18,6 +23,10 @@ unsigned long lastUpdate = 0;
 
 BLEService bleService(BLESERVUUID);
 BLECharacteristic bleCharacteristic(BLECHARUUID, BLEWrite | BLERead, SERVO_LIST_LENGTH);
+
+BLECharacteristic receivePoses(BLEPOSECHARUUID, BLEWrite | BLERead | BLENotify, 20);
+
+BLECharacteristic tx(txUUID, BLENotify | BLERead, 1);
 
 void moveSingleServo(Servo **servoList, uint8_t index, uint8_t amount);
 void moveAllServos(Servo **servoList, const uint8_t *amounts, const uint8_t arrayLength);
@@ -38,6 +47,17 @@ struct Pose
   bool isBreak = false;
   String interpolationType;
   int index = 0;
+};
+
+// USE TASK BYTE TO REFERENCE!
+
+enum TASKBYTE
+{
+  ANGLE,
+  DURATION,
+  ISBREAK,
+  INERPOLATIONTYPE,
+  INDEX,
 };
 
 struct POSE_LIST
@@ -62,7 +82,7 @@ struct POSE_LIST
 
   bool requestingAnimationChange = false;
 
-  Pose *replacementPoses[4];
+  Pose *replacementPoses[25];
   int sizeOfReplacementArray; // LIST OF ACTUAL POSES TO CHANGE!
 
   bool temporaryIndexChanged = false;
@@ -104,12 +124,30 @@ struct POSE_LIST
       replacementPoses[sizeOfReplacementArray] = poseArray;
     }
   }
+
+  void replaceAnimationFrames(Pose **poseArray)
+  {
+    int sizeOfIncomingArray = sizeof(poseArray) / sizeof(poseArray[0]);
+
+    for (int i = 0; i < sizeOfIncomingArray; i++)
+    {
+      replaceAnimationFrame(poseArray[i], poseArray[i]->index);
+    }
+  }
 };
 
 Pose myPoses[] = {
     {{100, 100, 100, 100}, 1000, true},
     {{0, 0, 0, 0}, 2000, false, "linear"},
     {{100, 120, 5, 90}, 5000, false, "highquad"}};
+
+Pose disagree[] = {
+    {{90, 90, 90, 90}, 500, true},
+    {{90, 130, 90, 130}, 300, false},
+    {{90, 45, 90, 60}, 300, false},
+    {{90, 130, 90, 130}, 300, false},
+    {{90, 45, 90, 60}, 300, false},
+    {{90, 90, 90, 90}, 500, false}};
 
 // TO BE LOOPED
 
@@ -243,14 +281,37 @@ void updateSequence(Servo **servoList, int *start_angles, int *current_angles_PO
 void moveToPose(int pose_index);
 POSE_LIST my_animation = {{90, 90, 90, 90}, myPoses, 3, 0, 0, servos, SERVO_LIST_LENGTH, true, 0, "quadratic"};
 
+POSE_LIST disagreeAnimation = {{90, 90, 90, 90}, disagree, 6, 0, 0, servos, SERVO_LIST_LENGTH, true, 0, "linear"};
+
 void setup()
 {
   Serial.begin(115200);
   pinMode(8, INPUT_PULLUP);
   delay(2000);
-  Serial.println("setup");
 
-  setupBLE(DEVICENAME, BLESERVUUID, BLECHARUUID, bleService, bleCharacteristic);
+  tx.writeValue(&ack, 1);
+
+  // setupBLE(DEVICENAME, BLESERVUUID, BLECHARUUID, bleService, bleCharacteristic);
+  if (!BLE.begin())
+  {
+    Serial.println("BLE Configuration Failed");
+    while (1)
+      ;
+  }
+  Serial.println("setting up ble");
+
+  BLE.setLocalName(DEVICENAME);
+  BLE.setDeviceName(DEVICENAME);
+  BLE.setAdvertisedService(bleService);
+
+  bleService.addCharacteristic(bleCharacteristic);
+  bleService.addCharacteristic(receivePoses);
+  bleService.addCharacteristic(tx);
+  BLE.addService(bleService);
+
+  BLE.advertise();
+
+  Serial.println("Setup Complete");
   setupServosToPins(servos, SERVO_LIST, SERVO_LIST_LENGTH);
   moveAllServos(servos, vals, valsLength);
 
@@ -288,7 +349,6 @@ int startAngles[SERVO_LIST_LENGTH] = {0};
 
 void loop()
 {
-
   // lastUpdate = millis();
 
   updateSequenceServos(my_animation);
@@ -315,6 +375,62 @@ void loop()
       Serial.print(",");
     }
     Serial.println();
+  }
+
+  if (receivePoses.written())
+  {
+    Serial.println("Recieved New Pose Values!");
+    const uint8_t *values = receivePoses.value();
+    const uint8_t size = receivePoses.valueLength();
+
+    Serial.println("SEND PACK CONFIRMATION TO CONTINUE!");
+    const uint8_t taskByte = values[0]; // make task byte the first byte in data package, ideally
+
+    uint16_t recievingBytePackage[size];
+
+    for (uint8_t i = 0; i < size; i++)
+    {
+      Serial.println("Copying in ");
+      Serial.print(values[i]);
+      Serial.println("");
+      memcpy(&recievingBytePackage[i], &values[i], sizeof(recievingBytePackage[i]));
+    }
+
+    Serial.println("HERE ARE INCOMING BYTES");
+
+    for (uint8_t i = 0; i < size; i++)
+    {
+      Serial.println(i);
+      Serial.print(" ");
+      Serial.print(recievingBytePackage[i]);
+    }
+
+    Serial.println("PARSING TASK BYTE");
+
+    // Work on difference cases for task bytes
+
+    switch (taskByte)
+    {
+    case 0:
+
+      break;
+    case 1:
+
+      break;
+    case 2:
+
+      break;
+    case 3:
+
+      break;
+    case 4:
+
+      break;
+
+    default:
+      Serial.println(taskByte);
+      Serial.print(" is not a proper task byte");
+    };
   }
 }
 
@@ -404,7 +520,7 @@ void setupBLE(const char *DEV_NAME, const char *SERVICE_UUID, const char *CHAR_U
 
   BLE.setLocalName(DEV_NAME);
   BLE.setDeviceName(DEV_NAME);
-  BLE.setAdvertisedService(service);
+  BLE.setAdvertisedService(bleService);
 
   bleService.addCharacteristic(characteristic);
   BLE.addService(service);
@@ -430,19 +546,3 @@ void cleanupServos(Servo **servoList, const uint8_t length)
     delete servoList[i];
   }
 }
-
-/*void KILL_SERVOS(Servo **servolist, const uint8_t length)
-{
-  for (uint8_t i = 0; i < length; i++)
-  {
-    servolist[length]->detach();
-  }
-}
-
-void UNKILL_SERVOS(Servo **servolist, const uint8_t *pins, uint8_t length)
-{
-  for (uint8_t i = 0; i < length; i++)
-  {
-    servolist[i]->attach(pins[i]);
-  }
-}*/
