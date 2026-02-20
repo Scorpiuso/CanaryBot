@@ -2,9 +2,31 @@ const connect = document.getElementById("bluetooth");
 const serviceUUID = "36124082-beb0-468d-878d-4e92e1d57754";
 const charUUID = "2b1d2fc0-d457-4d7d-bcdc-5dc309b86e1d";
 
+const txUUID = "424c7441-deb7-41a6-ab07-91838c0ee835";
+
+let encoder = new TextEncoder();
+
+const sendPosesUUID = "8bd3c001-a985-428e-9033-ef4ba970cc52";
+
 const totalStepsServo = 180;
 const sliders = Array.from(document.querySelectorAll("input"));
 const numberOfServos = 4;
+
+class Pose {
+  constructor(angle, duration, isBreak, interpolationType, index) {
+    this.angle = angle;
+    this.duration = duration;
+    this.isBreak = isBreak;
+    this.interpolationType = interpolationType;
+    this.index = index;
+  }
+}
+
+const interpMapping = {
+  linear: 1,
+  quadratic: 2,
+  hardquad: 3,
+};
 
 import {
   HandLandmarker,
@@ -35,6 +57,26 @@ async function connectAndInteract() {
 
     const characteristic = await service.getCharacteristic(charUUID);
 
+    const txCharacteristic = await service.getCharacteristic(txUUID);
+    await txCharacteristic.startNotifications();
+
+    let readyForNextBytePackage = true;
+
+    // await txCharacteristic.startNotifications().then((characteristic) => {
+
+    // });
+
+    txCharacteristic.addEventListener("characteristicvaluechanged", (event) => {
+      if (!readyForNextBytePackage) {
+        readyForNextBytePackage = true;
+      }
+    });
+
+    const characteristicPoseData =
+      await service.getCharacteristic(sendPosesUUID);
+
+    //characteristicPoseData.addEventListener("characteristicvaluechanged", modifyCurrentAnimationData);
+
     const initialVals = await characteristic.readValue();
 
     const dataByteArray = new Uint8Array(initialVals.buffer);
@@ -49,6 +91,93 @@ async function connectAndInteract() {
         detail: dataByteArray,
       }),
     );
+
+    window.waitForAck = async () => {
+      return new Promise((resolve) => {
+        function handler(event) {
+          const value = event.target.value.buffer;
+
+          if (value == 1) {
+            txCharacteristic.removeEventListener(
+              "characteristicvaluechanged",
+              handler,
+            );
+
+            readyForNextBytePackage = true;
+            resolve();
+          }
+        }
+
+        txCharacteristic.addEventListener(
+          "characteristicvaluechanged",
+          handler,
+        );
+      });
+    };
+
+    window.sendAnimationData = async (poseArray) => {
+      const taskByte = {
+        angle: 0,
+        duration: 1,
+        isBreak: 2,
+        interpolationType: 3,
+        index: 4,
+      };
+
+      let sendingIndex = 0;
+
+      for (let poseFrame of poseArray) {
+        if (poseFrame instanceof Pose) {
+          // Perform task on each individual pose object
+
+          // this.angle = angle;
+          // this.duration = duration;
+          // this.isBreak = isBreak;
+          // this.interpolationType = interpolationType;
+          // this.index = index;
+
+          let dataForSending = [];
+          let instructionByte = [];
+
+          const dataPlusInstructionByte = {};
+
+          for (const [key, value] of Object.entries(poseFrame)) {
+            if (value != null) {
+              //Splitting into 2-Byte Chunks
+              if (value instanceof Array) {
+                dataForSending.push(Uint16Array.from(value));
+                dataPlusInstructionByte[value] = taskByte[key];
+              } else {
+                dataForSending.push(Uint16Array.from([value]));
+                dataPlusInstructionByte[value] = taskByte[key];
+              }
+            }
+          }
+
+          for (const [key, value] of Object.entries(dataPlusInstructionByte)) {
+            if (readyForNextBytePackage) {
+              if (key instanceof Array) {
+                const sendArray = [...key, value];
+              } else {
+                const sendArray = [key, value];
+              }
+
+              readyForNextBytePackage = false;
+
+              const prommy = waitForAck();
+
+              await characteristicPoseData.writeValue(
+                Uint8Array.from(sendArray),
+              );
+
+              await prommy;
+
+              readyForNextBytePackage = true;
+            }
+          }
+        }
+      }
+    };
 
     window.bleWriterLoop = async (nums) => {
       while (true) {
