@@ -9,6 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="./src/rotation-listener.js"></script>
   </head>
   <style>
     #scene {
@@ -71,7 +72,12 @@
           color="blue"
         ></a-box>
 
-        <a-entity rotary id="whiteArm1Entity" position="0 2.482 0">
+        <a-entity
+          rotary
+          id="whiteArm1Entity"
+          data-servo="0"
+          position="0 2.482 0"
+        >
           <a-box
             id="whiteArm1"
             color="white"
@@ -89,7 +95,12 @@
               color="blue"
             ></a-box>
 
-            <a-entity rotary id="whiteArm2Entity" position="0 1.324 0">
+            <a-entity
+              rotary
+              id="whiteArm2Entity"
+              data-servo="1"
+              position="0 1.324 0"
+            >
               <a-box
                 id="whiteArm2"
                 color="white"
@@ -97,7 +108,12 @@
                 position="0 2.482 0"
               ></a-box>
 
-              <a-entity rotary id="whiteArm3Entity" position="0 6.422 0">
+              <a-entity
+                rotary
+                id="whiteArm3Entity"
+                data-servo="2"
+                position="0 6.422 0"
+              >
                 <a-box
                   id="whiteArm3"
                   color="white"
@@ -109,6 +125,7 @@
                   rotary
                   id="servo4Entity"
                   scale="1 1 1"
+                  data-servo="3"
                   position="0 6.260 0"
                 >
                   <a-box
