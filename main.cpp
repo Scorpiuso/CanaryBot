@@ -9,6 +9,8 @@ const char *BLECHARUUID = "2b1d2fc0-d457-4d7d-bcdc-5dc309b86e1d";
 
 const char *BLEPOSECHARUUID = "8bd3c001-a985-428e-9033-ef4ba970cc52";
 
+const char *BLESINGLESERVOUUID = "14840e5a-d951-4588-8ec0-7c1af77e31e4";
+
 const char *txUUID = "424c7441-deb7-41a6-ab07-91838c0ee835";
 const uint8_t ack = 1;
 
@@ -23,6 +25,9 @@ unsigned long lastUpdate = 0;
 
 BLEService bleService(BLESERVUUID);
 BLECharacteristic bleCharacteristic(BLECHARUUID, BLEWrite | BLERead, SERVO_LIST_LENGTH);
+
+// TO SEND BYTE TO A SINGLE SERVO
+BLECharacteristic moveOneServoCharacteristic(BLESINGLESERVOUUID, BLEWrite, 8);
 
 BLECharacteristic receivePoses(BLEPOSECHARUUID, BLEWrite | BLERead | BLENotify, 15);
 
@@ -307,6 +312,7 @@ void setup()
   bleService.addCharacteristic(bleCharacteristic);
   bleService.addCharacteristic(receivePoses);
   bleService.addCharacteristic(tx);
+  bleService.addCharacteristic(moveOneServoCharacteristic); // WORK WITH THIS LATER
   BLE.addService(bleService);
 
   BLE.advertise();
