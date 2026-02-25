@@ -1,3 +1,6 @@
+/** @type {import("three")} */
+const THREE = window.THREE;
+
 const connect = document.getElementById("bluetooth");
 const serviceUUID = "36124082-beb0-468d-878d-4e92e1d57754";
 const charUUID = "2b1d2fc0-d457-4d7d-bcdc-5dc309b86e1d";
@@ -22,6 +25,20 @@ class Pose {
   }
 }
 
+window.interps = {
+  linear: 0,
+  quadratic: 1,
+};
+
+window.pose1 = new Pose();
+pose1.angle = [10, 10, 10, 10];
+pose1.duration = 1000;
+pose1.isBreak = false;
+pose1.interpolationType = "linear";
+pose1.index = 0;
+
+window.poses = [pose1]; // FOR EXAMPLE
+
 const interpMapping = {
   linear: 1,
   quadratic: 2,
@@ -37,13 +54,44 @@ import * as BS from "./brilliantsole/brilliantsole.module.js";
 
 // document.querySelector(".local-transform input").click() Use this bc aframe need
 
-let jointArray = Array.from(document.querySelectorAll("[rotary]"));
+window.jointArray = Array.from(document.querySelectorAll("[rotary]"));
 console.log(jointArray);
+
+window.jointArrayRotations = [
+  jointArray[0].object3D.rotation.y,
+  jointArray[1].object3D.rotation.y,
+  jointArray[2].object3D.rotation.x,
+  jointArray[3].object3D.rotation.z,
+];
 
 let currentServoPositions = [];
 for (let i = 0; i < numberOfServos; i++) {
   currentServoPositions.push(0);
 }
+
+window.radsToDegrees = function (radians) {
+  return radians * (180 / Math.PI);
+};
+
+const clamp = (value, min, max) => {
+  return Math.max(min, Math.min(max, value));
+};
+
+window.jointArrayToRoboticsUpdating = true;
+
+window.convertJointArrayToRoboticsDegrees = function (arr) {
+  let newArray = [];
+
+  arr.forEach((value, index) => {
+    if (index == 2) {
+      newArray.push(clamp(Math.trunc(-radsToDegrees(value) + 90), 0, 180));
+    } else {
+      newArray.push(clamp(Math.trunc(radsToDegrees(value) + 90), 0, 180));
+    }
+  });
+
+  return newArray;
+};
 
 async function connectAndInteract() {
   try {
@@ -66,14 +114,10 @@ async function connectAndInteract() {
 
     // });
 
-    txCharacteristic.addEventListener("characteristicvaluechanged", (event) => {
-      if (!readyForNextBytePackage) {
-        readyForNextBytePackage = true;
-      }
-    });
-
     const characteristicPoseData =
       await service.getCharacteristic(sendPosesUUID);
+
+    characteristicPoseData.startNotifications();
 
     //characteristicPoseData.addEventListener("characteristicvaluechanged", modifyCurrentAnimationData);
 
@@ -95,15 +139,15 @@ async function connectAndInteract() {
     window.waitForAck = async () => {
       return new Promise((resolve) => {
         function handler(event) {
-          const value = event.target.value.buffer;
+          const value = new Uint8Array(event.target.value.buffer)[0];
 
-          if (value == 1) {
+          if (value === 1) {
             txCharacteristic.removeEventListener(
               "characteristicvaluechanged",
               handler,
             );
 
-            readyForNextBytePackage = true;
+            //readyForNextBytePackage = true;
             resolve();
           }
         }
@@ -124,57 +168,56 @@ async function connectAndInteract() {
         index: 4,
       };
 
-      let sendingIndex = 0;
+      for (const poseFrame of poseArray) {
+        if (!(poseFrame instanceof Pose)) continue;
 
-      for (let poseFrame of poseArray) {
-        if (poseFrame instanceof Pose) {
-          // Perform task on each individual pose object
+        const packets = [];
 
-          // this.angle = angle;
-          // this.duration = duration;
-          // this.isBreak = isBreak;
-          // this.interpolationType = interpolationType;
-          // this.index = index;
+        for (const [key, value] of Object.entries(poseFrame)) {
+          if (value == null) continue;
 
-          let dataForSending = [];
-          let instructionByte = [];
+          const instruction = taskByte[key];
 
-          const dataPlusInstructionByte = {};
+          let lengthOfIncomingData;
 
-          for (const [key, value] of Object.entries(poseFrame)) {
-            if (value != null) {
-              //Splitting into 2-Byte Chunks
-              if (value instanceof Array) {
-                dataForSending.push(Uint16Array.from(value));
-                dataPlusInstructionByte[value] = taskByte[key];
-              } else {
-                dataForSending.push(Uint16Array.from([value]));
-                dataPlusInstructionByte[value] = taskByte[key];
-              }
-            }
+          if (Array.isArray(value)) {
+            lengthOfIncomingData = value.length;
+
+            packets.push([instruction, lengthOfIncomingData, ...value]);
+
+            console.log([instruction, lengthOfIncomingData, ...value]);
+          } else if (key === "interpolationType") {
+            packets.push([instruction, 1, interps[value]]);
+
+            console.log([instruction, 1, interps[value]]);
+          } else {
+            packets.push([instruction, 1, value]);
+
+            console.log([instruction, 1, value]);
           }
+        }
 
-          for (const [key, value] of Object.entries(dataPlusInstructionByte)) {
-            if (readyForNextBytePackage) {
-              if (key instanceof Array) {
-                const sendArray = [...key, value];
-              } else {
-                const sendArray = [key, value];
-              }
+        for (const packet of packets) {
+          console.log("Sending packet:", packet);
 
-              readyForNextBytePackage = false;
+          const ackPromise = waitForAck();
 
-              const prommy = waitForAck();
-
-              await characteristicPoseData.writeValue(
-                Uint8Array.from(sendArray),
-              );
-
-              await prommy;
-
-              readyForNextBytePackage = true;
+          const dataView = new DataView(new ArrayBuffer(2 * packet.length - 1));
+          let byteOffset = 0;
+          packet.forEach((value, index) => {
+            if (index == 0) {
+              dataView.setUint8(byteOffset, value);
+              byteOffset++;
+            } else {
+              dataView.setUint16(byteOffset, value, true);
+              byteOffset += 2;
             }
-          }
+          });
+
+          await characteristicPoseData.writeValue(dataView.buffer);
+          console.log("hmmm. Sending from dataview");
+
+          await ackPromise;
         }
       }
     };
@@ -191,6 +234,10 @@ async function connectAndInteract() {
             } else {
               await characteristic.writeValue(data);
             }
+
+            pendingArray = null;
+
+            console.log("Writing from writer loop");
           } catch (e) {
             console.error("BLE write failed", e);
           }
@@ -208,6 +255,31 @@ async function connectAndInteract() {
     //   await characteristic.writeValue(array);
     //   return array;
     // };
+
+    window.writeJointArrayValues = async (jointArrayValues) => {
+      const jointArrayRotations = Uint8Array.from(
+        convertJointArrayToRoboticsDegrees([
+          jointArrayValues[0].object3D.rotation.y,
+          jointArrayValues[1].object3D.rotation.y,
+          jointArrayValues[2].object3D.rotation.x,
+          jointArrayValues[3].object3D.rotation.z,
+        ]),
+      );
+
+      pendingArray = Uint8Array.from(jointArrayRotations);
+
+      console.log(pendingArray);
+
+      if (!writerStarted) {
+        writerStarted = true;
+        //console.log(numbers);
+        bleWriterLoop(pendingArray);
+      }
+
+      return pendingArray;
+
+      //console.log(convertJointArrayToRoboticsDegrees(jointArrayRotations));
+    };
 
     window.writeValue = async (numbers) => {
       // Store latest data ONLY
@@ -269,6 +341,8 @@ function throttler(callerFunction, interval) {
 sliders.forEach((slider) => {
   slider.addEventListener("input", function () {
     currentServoPositions[sliders.indexOf(this)] = Number(this.value);
+
+    console.log("aha!");
 
     writeValue(sendRotationBytesDEMAND(currentServoPositions, totalStepsServo));
   });
@@ -416,3 +490,19 @@ cameraImage.addEventListener("load", () => {
 
 loadHandLandmarker();
 //startVideo();
+
+window.addEventListener("load", () => {
+  document.querySelectorAll("[data-servo]").forEach((element) => {
+    element.setAttribute("rotation-listener", "axis: x");
+  });
+});
+
+const scene = document.querySelector("a-scene");
+console.log(scene);
+scene.addEventListener("rotationChanged", (event) => {
+  const { entity, angle, axis } = event.detail;
+  const servoIndex = +entity.dataset.servo;
+  console.log({ angle, axis, servoIndex }, entity);
+
+  // Now ot create a function that writes to one individual servo.
+});
