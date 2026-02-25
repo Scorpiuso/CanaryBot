@@ -24,7 +24,7 @@ unsigned long lastUpdate = 0;
 BLEService bleService(BLESERVUUID);
 BLECharacteristic bleCharacteristic(BLECHARUUID, BLEWrite | BLERead, SERVO_LIST_LENGTH);
 
-BLECharacteristic receivePoses(BLEPOSECHARUUID, BLEWrite | BLERead | BLENotify, 20);
+BLECharacteristic receivePoses(BLEPOSECHARUUID, BLEWrite | BLERead | BLENotify, 15);
 
 BLECharacteristic tx(txUUID, BLENotify | BLERead, 1);
 
@@ -351,7 +351,7 @@ void loop()
 {
   // lastUpdate = millis();
 
-  updateSequenceServos(my_animation);
+  // updateSequenceServos(my_animation);
 
   // updateSequence();
   // updateSequence(servos, startAngles, currentAngles, *sequence2, SERVO_LIST_LENGTH, totalPoses);
@@ -379,58 +379,50 @@ void loop()
 
   if (receivePoses.written())
   {
-    Serial.println("Recieved New Pose Values!");
+    // Change to become a uint16_t and recieve all values and send through a Uint16Array.of(array or value);
+
     const uint8_t *values = receivePoses.value();
+    const uint8_t taskByte = values[0];
+    const uint16_t *angleValues = (uint16_t *)&values[1];
     const uint8_t size = receivePoses.valueLength();
 
-    Serial.println("SEND PACK CONFIRMATION TO CONTINUE!");
-    const uint8_t taskByte = values[0]; // make task byte the first byte in data package, ideally
+    const uint8_t numofValues = (size - 1) / 2;
 
-    uint16_t recievingBytePackage[size];
+    // Serial.println(taskByte);
 
-    for (uint8_t i = 0; i < size; i++)
+    uint16_t valuesManipulate[numofValues - 1];
+
+    for (uint8_t i = 1; i + 1 < numofValues; i++)
     {
-      Serial.println("Copying in ");
-      Serial.print(values[i]);
-      Serial.println("");
-      memcpy(&recievingBytePackage[i], &values[i], sizeof(recievingBytePackage[i]));
+      // Serial.println(angleValues[i]);
+      valuesManipulate[i - 1] = angleValues[i];
     }
-
-    Serial.println("HERE ARE INCOMING BYTES");
-
-    for (uint8_t i = 0; i < size; i++)
-    {
-      Serial.println(i);
-      Serial.print(" ");
-      Serial.print(recievingBytePackage[i]);
-    }
-
-    Serial.println("PARSING TASK BYTE");
-
-    // Work on difference cases for task bytes
 
     switch (taskByte)
     {
     case 0:
+      Serial.println("Executing nubers though array");
 
+      for (uint8_t i = 0; i < numofValues; i++)
+      {
+        Serial.println("VALUES: \n");
+        Serial.print(valuesManipulate[i]);
+      }
       break;
     case 1:
-
       break;
     case 2:
-
       break;
     case 3:
-
       break;
     case 4:
-
       break;
-
     default:
-      Serial.println(taskByte);
-      Serial.print(" is not a proper task byte");
-    };
+      Serial.print("ERROR! THIS EXECUTION DOES NOT EXIST");
+      return;
+    }
+
+    tx.writeValue(&ack, 1);
   }
 }
 
@@ -546,3 +538,19 @@ void cleanupServos(Servo **servoList, const uint8_t length)
     delete servoList[i];
   }
 }
+
+/*void KILL_SERVOS(Servo **servolist, const uint8_t length)
+{
+  for (uint8_t i = 0; i < length; i++)
+  {
+    servolist[length]->detach();
+  }
+}
+
+void UNKILL_SERVOS(Servo **servolist, const uint8_t *pins, uint8_t length)
+{
+  for (uint8_t i = 0; i < length; i++)
+  {
+    servolist[i]->attach(pins[i]);
+  }
+}*/
